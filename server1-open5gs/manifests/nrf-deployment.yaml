@@ -1,0 +1,120 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    deployment.kubernetes.io/revision: "1"
+    meta.helm.sh/release-name: open5gs
+    meta.helm.sh/release-namespace: default
+  creationTimestamp: "2026-04-08T09:18:33Z"
+  generation: 1
+  labels:
+    app.kubernetes.io/instance: open5gs
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: nrf
+    helm.sh/chart: nrf-2.2.0
+  name: open5gs-nrf
+  namespace: default
+  resourceVersion: "133546"
+  uid: 39b72746-e559-486d-9641-c424158377ef
+spec:
+  progressDeadlineSeconds: 600
+  replicas: 1
+  revisionHistoryLimit: 10
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: open5gs
+      app.kubernetes.io/name: nrf
+  strategy:
+    rollingUpdate:
+      maxSurge: 25%
+      maxUnavailable: 25%
+    type: RollingUpdate
+  template:
+    metadata:
+      creationTimestamp: null
+      labels:
+        app.kubernetes.io/instance: open5gs
+        app.kubernetes.io/managed-by: Helm
+        app.kubernetes.io/name: nrf
+        helm.sh/chart: nrf-2.2.0
+    spec:
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - podAffinityTerm:
+              labelSelector:
+                matchLabels:
+                  app.kubernetes.io/instance: open5gs
+                  app.kubernetes.io/name: nrf
+              namespaces:
+              - default
+              topologyKey: kubernetes.io/hostname
+            weight: 1
+      containers:
+      - args:
+        - open5gs-nrfd
+        image: docker.io/gradiant/open5gs:2.7.0
+        imagePullPolicy: IfNotPresent
+        livenessProbe:
+          failureThreshold: 5
+          initialDelaySeconds: 600
+          periodSeconds: 10
+          successThreshold: 1
+          tcpSocket:
+            port: sbi
+          timeoutSeconds: 5
+        name: open5gs-nrf
+        ports:
+        - containerPort: 7777
+          name: sbi
+          protocol: TCP
+        readinessProbe:
+          failureThreshold: 5
+          initialDelaySeconds: 30
+          periodSeconds: 5
+          successThreshold: 1
+          tcpSocket:
+            port: sbi
+          timeoutSeconds: 1
+        resources: {}
+        securityContext:
+          runAsNonRoot: true
+          runAsUser: 1001
+        terminationMessagePath: /dev/termination-log
+        terminationMessagePolicy: File
+        volumeMounts:
+        - mountPath: /opt/open5gs/etc/open5gs/nrf.yaml
+          name: config
+          subPath: nrf.yaml
+      dnsPolicy: ClusterFirst
+      restartPolicy: Always
+      schedulerName: default-scheduler
+      securityContext:
+        fsGroup: 1001
+      serviceAccount: default
+      serviceAccountName: default
+      terminationGracePeriodSeconds: 30
+      volumes:
+      - configMap:
+          defaultMode: 420
+          name: open5gs-nrf
+        name: config
+status:
+  availableReplicas: 1
+  conditions:
+  - lastTransitionTime: "2026-04-08T09:18:34Z"
+    lastUpdateTime: "2026-04-08T09:19:30Z"
+    message: ReplicaSet "open5gs-nrf-7c5455656b" has successfully progressed.
+    reason: NewReplicaSetAvailable
+    status: "True"
+    type: Progressing
+  - lastTransitionTime: "2026-04-12T03:57:41Z"
+    lastUpdateTime: "2026-04-12T03:57:41Z"
+    message: Deployment has minimum availability.
+    reason: MinimumReplicasAvailable
+    status: "True"
+    type: Available
+  observedGeneration: 1
+  readyReplicas: 1
+  replicas: 1
+  updatedReplicas: 1
