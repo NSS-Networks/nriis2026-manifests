@@ -1,0 +1,58 @@
+mongodb:
+  enabled: true
+  image:
+    registry: docker.io
+    repository: mongo
+    tag: "6.0"
+  persistence:
+    enabled: true
+    storageClass: "local-path"
+    accessModes:
+      - ReadWriteOnce
+    size: 8Gi
+  podSecurityContext:
+    enabled: false
+  containerSecurityContext:
+    enabled: false
+
+populate:
+  enabled: false
+
+mme:
+  enabled: false
+sgwc:
+  enabled: false
+sgwu:
+  enabled: false
+hss:
+  enabled: false
+pcrf:
+  enabled: false
+webui:
+  enabled: false
+
+nrf:
+  enabled: true
+scp:
+  enabled: true
+amf:
+  enabled: true
+smf:
+  enabled: true
+  config:
+    use_mongodb_subscriber: true
+    freeDiameter: false
+upf:
+  enabled: true
+ausf:
+  enabled: true
+udm:
+  enabled: true
+udr:
+  enabled: true
+bsf:
+  enabled: true
+nssf:
+  enabled: true
+pcf:
+  enabled: true
