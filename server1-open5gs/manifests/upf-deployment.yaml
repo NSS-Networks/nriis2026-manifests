@@ -53,7 +53,7 @@ spec:
       containers:
       - command:
         - open5gs-upfd
-        image: docker.io/gradiant/open5gs:2.7.0
+        image: ghcr.io/nss-network/open5gs:2.7.0
         imagePullPolicy: IfNotPresent
         name: open5gs-upf
         ports:
@@ -85,7 +85,7 @@ spec:
         - /bin/bash
         - -c
         - /k8s-entrypoint.sh
-        image: docker.io/gradiant/open5gs:2.7.0
+        image: ghcr.io/nss-network/open5gs:2.7.0
         imagePullPolicy: IfNotPresent
         name: tun-create
         resources: {}

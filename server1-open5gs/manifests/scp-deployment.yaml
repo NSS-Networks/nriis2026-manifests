@@ -56,7 +56,7 @@ spec:
         env:
         - name: DB_URI
           value: mongodb://open5gs-mongodb/open5gs
-        image: docker.io/gradiant/open5gs:2.7.0
+        image: ghcr.io/nss-network/open5gs:2.7.0
         imagePullPolicy: IfNotPresent
         livenessProbe:
           failureThreshold: 5
