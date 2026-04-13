@@ -106,11 +106,11 @@ nriis2026-manifests/
 | ขั้นที่ | หัวข้อ | คู่มือ |
 |--------|--------|-------|
 | 1 | ติดตั้ง Kubernetes | [md](server1-open5gs/docs/md/01-kubernetes-install.md) |
-| 2 | Clone ไฟล์จาก GitHub | [md](docs/md/02-clone-github.md) |
-| 3 | ติดตั้ง Open5GS | [md](docs/md/03-open5gs-install.md) |
-| 4 | ตรวจสอบระบบ | [md](docs/md/04-verify.md) |
-| 5 | การอัปเดต Config | [md](docs/md/05-update-config.md) |
-| 6 | การแก้ปัญหาที่พบบ่อย | [md](docs/md/06-troubleshoot.md) |
+| 2 | Clone ไฟล์จาก GitHub | [md](server1-open5gs/docs/md/02-clone-github.md) |
+| 3 | ติดตั้ง Open5GS | [md](server1-open5gs/docs/md/03-open5gs-install.md) |
+| 4 | ตรวจสอบระบบ | [md](server1-open5gs/docs/md/04-verify.md) |
+| 5 | การอัปเดต Config | [md](server1-open5gs/docs/md/05-update-config.md) |
+| 6 | การแก้ปัญหาที่พบบ่อย | [md](server1-open5gs/docs/md/06-troubleshoot.md) |
 
 ---
 
