@@ -1,0 +1,32 @@
+<svg width="500" height="500" viewBox="0 0 680 680" xmlns="http://www.w3.org/2000/svg">
+<style>
+  .bg-circle{fill:#050D1A}.ring1{fill:none;stroke:#050D1A;stroke-width:16}.ring2{fill:none;stroke:#0D2340;stroke-width:4}.ring3{fill:none;stroke:#1A3A5C;stroke-width:1.5}.inner-ring{fill:none;stroke:#0D2340;stroke-width:1}.conn{stroke:#1E4D78;stroke-width:1.5;fill:none;opacity:.7}.conn2{stroke:#2A6090;stroke-width:.8;fill:none;opacity:.3}.node-dot{fill:#3A7AB0}.dot{fill:#5A9FD4}.text-main{font-family:Arial,sans-serif;font-size:54px;font-weight:700;fill:#FFF;text-anchor:middle;letter-spacing:1}.text-arc{font-family:Arial,sans-serif;font-size:15px;font-weight:500;fill:#5A9FD4}
+</style>
+<circle cx="340" cy="340" r="300" class="bg-circle"/>
+<circle cx="340" cy="340" r="300" class="ring1"/>
+<circle cx="340" cy="340" r="278" class="ring2"/>
+<circle cx="340" cy="340" r="258" class="ring3"/>
+<circle cx="340" cy="340" r="210" class="inner-ring"/>
+<circle cx="340" cy="340" r="165" class="inner-ring" opacity="0.4"/>
+<line x1="340" y1="88" x2="175" y2="455" class="conn"/>
+<line x1="340" y1="88" x2="505" y2="455" class="conn"/>
+<line x1="175" y1="455" x2="505" y2="455" class="conn"/>
+<line x1="340" y1="88" x2="340" y2="592" class="conn2"/>
+<line x1="120" y1="265" x2="560" y2="265" class="conn2"/>
+<line x1="120" y1="265" x2="505" y2="455" class="conn2"/>
+<line x1="560" y1="265" x2="175" y2="455" class="conn2"/>
+<circle cx="340" cy="88" r="11" class="node-dot"/>
+<circle cx="175" cy="455" r="11" class="node-dot"/>
+<circle cx="505" cy="455" r="11" class="node-dot"/>
+<circle cx="120" cy="265" r="7" class="dot"/>
+<circle cx="560" cy="265" r="7" class="dot"/>
+<circle cx="340" cy="592" r="7" class="dot"/>
+<circle cx="340" cy="340" r="14" fill="#3A7AB0"/>
+<circle cx="340" cy="340" r="6" fill="#FFFFFF"/>
+<text x="340" y="358" class="text-main">NSS-Network</text>
+<path id="arcTop" d="M 88,340 A 252,252 0 0,1 592,340" fill="none"/>
+<path id="arcBot" d="M 105,368 A 240,240 0 0,0 575,368" fill="none"/>
+<text class="text-arc"><textPath href="#arcTop" startOffset="12%">Open5GS on Kubernetes  •  NRIIS 2026  •</textPath></text>
+<text class="text-arc" opacity="0.5"><textPath href="#arcBot" startOffset="8%">5G Core  •  Cloud Native  •  Open Source  •</textPath></text>
+<circle cx="340" cy="340" r="299" fill="none" stroke="#0D2340" stroke-width="1" stroke-dasharray="3 9" opacity="0.6"/>
+</svg>
