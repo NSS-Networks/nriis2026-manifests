@@ -1,0 +1,99 @@
+
+สรุป Linux Kernel สำหรับ OAI และ Open5GS
+OpenAirInterface 5G RAN (CU/DU/gNB) และ Open5GS Core Network
+
+1. ภาพรวม Kernel ที่ใช้งาน
+Linux kernel มีหลายประเภทที่เกี่ยวข้องกับการ deploy OAI และ Open5GS ดังนี้:
+
+Kernel Type	Package Name	Preemption	ใช้งานหลัก
+Generic	linux-generic	None	Server ทั่วไป
+HWE	linux-generic-hwe-xx.xx	None	Hardware ใหม่
+Low-Latency	linux-lowlatency	Voluntary	SDR / USRP
+Real-Time	linux-realtime	Full PREEMPT_RT	O-RAN 7.2 / USRP
+
+2. Open5GS Core Network
+Open5GS ทำงานเป็น 5G Core (AMF, SMF, UPF, UDM ฯลฯ) ซึ่งเป็น Control/Data Plane ไม่มี real-time constraint จึงใช้ kernel ธรรมดาได้:
+
+•	linux-generic — ใช้งานได้ปกติ เหมาะสำหรับ production server
+•	linux-generic-hwe-xx.xx (HWE) — แนะนำถ้าใช้ hardware รุ่นใหม่
+•	ไม่จำเป็นต้องใช้ low-latency หรือ real-time kernel
+
+คำสั่งติดตั้ง Open5GS:
+sudo apt install linux-generic-hwe-22.04
+
+3. OAI CU (Central Unit)
+CU รองรับ Upper Layer Protocol (RRC, PDCP, SDAP, F1AP, E1AP) ไม่มี real-time constraint เช่นเดียวกับ Core Network:
+
+•	ใช้ linux-generic หรือ HWE ได้ปกติ
+•	ไม่จำเป็นต้องใช้ low-latency หรือ real-time kernel
+•	Deploy ได้ทั้งบน bare metal และ container (Docker/Kubernetes)
+
+
+4. OAI DU (Distributed Unit)
+DU รัน Layer 1/2 (PHY/MAC) มี timing constraint เข้มข้นมาก (< 1ms per slot) โดย kernel ที่ต้องใช้ขึ้นอยู่กับ Radio Unit ที่ต่ออยู่:
+
+Use Case	Kernel ที่แนะนำ	หมายเหตุ
+DU + RFsim (simulation)	Generic / HWE	ใช้สำหรับทดสอบเท่านั้น
+DU + USRP / SDR	linux-lowlatency	B210, N310, X310 เป็นต้น
+DU + O-RAN 7.2 RU	linux-realtime	Benetel, LITEON, VVDN ฯลฯ
+DU + USRP และ O-RAN 7.2	linux-realtime (อย่างเดียว)	ครอบคลุมทั้งสองแบบ
+
+5. Real-Time Kernel สำหรับ DU (แนะนำ)
+5.1 ทำไมต้องใช้ Real-Time Kernel?
+•	PREEMPT_RT ทำให้ process มี latency ต่ำมาก (~100µs)
+•	รองรับทั้ง USRP และ O-RAN 7.2 RU ในเครื่องเดียวกัน
+•	ลดปัญหา timing violation ในการส่ง/รับสัญญาณ
+
+5.2 การติดตั้ง Real-Time Kernel
+สามารถติดตั้งทีหลังได้เลย โดยไม่ต้องติดตั้ง OS ใหม่:
+
+sudo apt update
+sudo apt install linux-realtime
+sudo reboot
+
+ตรวจสอบหลัง reboot:
+uname -r   # ต้องเห็น: xxxx-realtime
+
+5.3 ตั้งค่า GRUB ให้ Boot Real-Time Kernel อัตโนมัติ
+แก้ไขไฟล์ /etc/default/grub:
+
+GRUB_DEFAULT=saved
+GRUB_SAVEDEFAULT=true
+GRUB_TIMEOUT_STYLE=hidden   # ไม่แสดง menu
+GRUB_TIMEOUT=0              # boot ทันที
+
+จากนั้นตั้ง default kernel และ update grub:
+sudo grub-set-default "Advanced options for Ubuntu>Ubuntu, with Linux x.x.x-realtime"
+sudo update-grub
+sudo reboot
+(กด Shift ค้างตอน boot เพื่อเข้า GRUB menu เมื่อต้องการ)
+
+6. การตั้งค่าเพิ่มเติมที่สำคัญสำหรับ DU
+นอกจาก kernel แล้ว ควรตั้งค่าระบบเพิ่มเติมดังนี้:
+
+6.1 ปิด CPU Frequency Scaling
+แก้ไข /etc/default/grub เพิ่ม boot parameters:
+GRUB_CMDLINE_LINUX_DEFAULT="quiet splash intel_pstate=disable processor.max_cstate=1 idle=poll"
+sudo update-grub
+
+6.2 ตั้งค่า CPU Governor เป็น Performance
+sudo apt install cpufrequtils
+echo 'GOVERNOR="performance"' | sudo tee /etc/default/cpufrequtils
+sudo systemctl restart cpufrequtils
+
+6.3 ปิด Hyperthreading (สำหรับ O-RAN 7.2)
+•	ปิดใน BIOS/UEFI Settings
+•	OAI แนะนำให้ปิด HT ทุกกรณีเมื่อใช้ O-RAN 7.2 FHI
+
+7. ตารางสรุป Kernel สำหรับแต่ละ Component
+
+Component	Kernel	จำเป็น?	หมายเหตุ
+Open5GS Core	Generic / HWE	Generic	ไม่ต้องการ RT
+OAI CU	Generic / HWE	Generic	Upper Layer เท่านั้น
+OAI DU (RFsim)	Generic / HWE	Generic	Simulation เท่านั้น
+OAI DU (USRP)	linux-lowlatency	Low-Latency	หรือใช้ realtime ก็ได้
+OAI DU (O-RAN 7.2)	linux-realtime	Real-Time	บังคับ RT
+OAI DU (ทั้งสองแบบ)	linux-realtime	Real-Time	ใช้ตัวเดียวครอบคลุม
+
+
+สรุป: ถ้าต้องการ deploy DU ที่รองรับทั้ง USRP และ O-RAN 7.2 RU แนะนำให้ใช้ linux-realtime เพียงตัวเดียว โดยไม่ต้องติดตั้งหลาย kernel ให้ยุ่งยาก
