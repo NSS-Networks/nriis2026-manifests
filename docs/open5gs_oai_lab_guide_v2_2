@@ -1,0 +1,763 @@
+
+
+
+
+
+คู่มือปฏิบัติการ
+การติดตั้งระบบ 5G Core และ gNB
+Open5GS (Kubernetes) + OAI CU/DU (Kubernetes Worker Node)
+MCC=001 | MNC=01 | UE Subnet: 10.45.0.0/16
+Server 1 (Master): 10.162.0.1  |  Server 2 (Worker): 10.162.0.2
+โครงการวิจัย บพข.  |  เวอร์ชัน 2.1  |  เมษายน 2026
+
+📋  การเปลี่ยนแปลงจากเวอร์ชัน 2.0
+• OAI CU/DU: เปลี่ยนจาก Bare Metal → Kubernetes Worker Node (join cluster เดิม)
+• UE IP Subnet: เปลี่ยนจาก 10.45.0.0/16 → 10.45.0.0/16
+• Server 2 ไม่ต้องติดตั้ง OAI แบบ bare metal อีกต่อไป — รัน OAI ใน Pod แทน
+
+💡  คู่มือนี้เขียนสำหรับนักศึกษาที่เริ่มต้น — อ่านทีละขั้นตอนตามลำดับ อย่าข้ามขั้นตอน
+ 
+0. เริ่มต้นที่นี่ — อ่านก่อนลงมือทำ
+
+คู่มือนี้แบ่งเป็น 3 ส่วนหลัก ทำตามลำดับ:
+
+ส่วน	เนื้อหา
+ส่วนที่ 1 (หัวข้อ 1–11)	ติดตั้ง Open5GS (5G Core) บน Server 1 ด้วย Kubernetes (Master Node)
+ส่วนที่ 2 (หัวข้อ 12–16)	Join Server 2 เข้า Cluster และ Deploy OAI CU/DU ใน Kubernetes
+ส่วนที่ 3 (หัวข้อ 17–18)	เชื่อมต่อ Open5GS กับ OAI และทดสอบระบบ
+
+คำศัพท์พื้นฐานที่ควรรู้
+คำศัพท์	ความหมายง่าย ๆ
+5G Core (Open5GS)	สมองของระบบ 5G — จัดการ SIM, Authentication, IP, Session
+gNB (OAI)	เสาสัญญาณ 5G — ส่ง/รับสัญญาณจาก UE (User Equipment)
+AMF	ตำรวจ — ตรวจสอบ UE ว่ามีสิทธิ์เชื่อมต่อหรือไม่
+SMF	ผู้จัดการ Session — สร้างและจัดการ data connection
+UPF	ไปรษณีย์ — ส่ง data ระหว่าง UE กับ internet
+NRF	สมุดโทรศัพท์ — ให้ component ค้นหากันได้
+Helm Chart	สูตรสำเร็จรูป — ติดตั้ง Open5GS ใน Kubernetes แบบอัตโนมัติ
+Pod	กล่องใส่ program — หน่วยเล็กสุดใน Kubernetes
+Worker Node	Server 2 ที่ join cluster มาเพื่อรัน Pod (OAI)
+PLMN	รหัสเครือข่าย = MCC + MNC (เหมือนชื่อบริษัทโทรศัพท์)
+ 
+1. สถาปัตยกรรมระบบ (Network Topology)
+
+ระบบประกอบด้วย Server 2 เครื่อง ทั้งสองเป็น Kubernetes Node เชื่อมต่อผ่าน LAN 10.162.0.0/24:
+
+╔═══════════════════════════════════════════════════════════════════════╗
+║      LAB NETWORK TOPOLOGY — Kubernetes Cluster (2 Nodes)            ║
+║                 โครงการวิจัย บพข. 5G Lab v2.1                       ║
+╚═══════════════════════════════════════════════════════════════════════╝
+
+┌─────────────────────────────────────┐    LAN Switch 10.162.0.0/24
+│  SERVER 1 — Kubernetes Master Node │◄────────────────────────┐
+│  IP: 10.162.0.1 | RAM >= 16GB   │                         │
+│  ┌──────────────────────────────┐  │                         │
+│  │  Kubernetes Control Plane   │  │                         │
+│  │  AMF:38412  SMF  NRF        │  │                         │
+│  │  UPF:2152  WebUI:30080      │  │                         │
+│  │  UE Subnet: 10.45.0.0/16  │  │                         │
+│  └──────────────────────────────┘  │                         │
+└─────────────────────────────────────┘                         │
+                                                                │
+┌─────────────────────────────────────┐                         │
+│  SERVER 2 — Kubernetes Worker Node │◄────────────────────────┘
+│  IP: 10.162.0.2 | RAM >= 32GB   │
+│  ┌──────────────────────────────┐  │
+│  │  Kubernetes Worker (joined) │  │
+│  │  CU-CP (oai-gnb Pod)        │  │
+│  │  CU-UP (oai-gnb Pod)        │  │
+│  │  DU    (oai-gnb Pod)        │  │
+│  └──────────────────────────────┘  │
+└─────────────────────────────────────┘
+
+Interface เชื่อมต่อระหว่าง Node:
+  N2 (NGAP/SCTP) : AMF 10.162.0.1:38412 <-> OAI CU-CP Pod
+  N3 (GTP-U/UDP) : UPF 10.162.0.1:2152  <-> OAI CU-UP Pod
+  UE Subnet      : 10.45.0.0/16 (จัดการโดย Open5GS UPF)
+  Pod Network    : 10.244.0.0/16 (Flannel CNI)
+
+⚠️  ตรวจสอบให้แน่ใจว่า Server ทั้งสองสามารถ ping ถึงกันได้ก่อนเริ่ม
+
+1.1 Port ที่ใช้สื่อสารระหว่าง Node
+Interface	Protocol/Port	ทิศทาง
+N2 (NGAP)	SCTP/38412	OAI CU-CP Pod → AMF (Server 1)
+N3 (GTP-U)	UDP/2152	OAI CU-UP Pod ↔ UPF (Server 1)
+WebUI	TCP/30080	Browser → Server 1
+MongoDB	TCP/27017	Internal (Kubernetes only)
+Kubernetes API	TCP/6443	Worker → Master (kubeadm join)
+ 
+2. ความต้องการของระบบ (System Requirements)
+
+2.1 Server 1 — Kubernetes Master Node (Open5GS)
+Component	ข้อกำหนด
+OS	Ubuntu 22.04 LTS (64-bit)
+CPU	8 Core ขึ้นไป (แนะนำ 16 Core)
+RAM	16 GB ขึ้นไป (แนะนำ 32 GB)
+Disk	100 GB SSD ขึ้นไป
+Network	1 NIC ขึ้นไป, IP: 10.162.0.1
+Internet	ต้องใช้ดาวน์โหลด Docker images ในครั้งแรก
+
+2.2 Server 2 — Kubernetes Worker Node (OAI CU/DU)
+Component	ข้อกำหนด
+OS	Ubuntu 22.04 LTS (64-bit)
+CPU	16 Core ขึ้นไป (แนะนำ Intel Xeon / AMD EPYC)
+RAM	32 GB ขึ้นไป
+Disk	100 GB SSD ขึ้นไป
+Network	1 NIC ขึ้นไป, IP: 10.162.0.2
+Kernel	Low-latency kernel แนะนำ: linux-lowlatency
+USRP/SDR	สำหรับ over-the-air ต้องมี USRP B210/X310 (ถ้า simulate ไม่ต้อง)
+Kubernetes	Worker Node — join cluster จาก Server 1
+ 
+─── ส่วนที่ 1: ติดตั้ง Open5GS บน Server 1 (Master Node) ───
+
+⚠️  ทำทุกคำสั่งในส่วนที่ 1 บน Server 1 (IP: 10.162.0.1) เท่านั้น
+
+3. เตรียม Server 1 (Pre-Installation)
+3.1 อัปเดต OS และติดตั้ง Package พื้นฐาน
+# อัปเดต package list และ upgrade
+sudo apt-get update && sudo apt-get upgrade -y
+
+# ติดตั้ง tools ที่จำเป็น
+sudo apt-get install -y curl wget git vim net-tools \
+  apt-transport-https ca-certificates gnupg \
+  lsb-release software-properties-common build-essential
+
+3.2 ปิด Swap — สำคัญมาก!
+Kubernetes บังคับให้ปิด Swap เพื่อให้ schedule resource ได้แม่นยำ
+sudo swapoff -a
+sudo sed -i '/ swap / s/^\(.*\)$/#\1/g' /etc/fstab
+free -h   # ต้องเห็น Swap: 0B 0B 0B
+
+3.3 ตั้งค่า Kernel สำหรับ Kubernetes
+cat <<EOF | sudo tee /etc/modules-load.d/k8s.conf
+overlay
+br_netfilter
+EOF
+sudo modprobe overlay && sudo modprobe br_netfilter
+
+cat <<EOF | sudo tee /etc/sysctl.d/k8s.conf
+net.bridge.bridge-nf-call-iptables  = 1
+net.bridge.bridge-nf-call-ip6tables = 1
+net.ipv4.ip_forward                 = 1
+EOF
+sudo sysctl --system
+lsmod | grep -E 'br_netfilter|overlay'
+
+3.4 กำหนด Hostname
+sudo hostnamectl set-hostname open5gs-master
+echo '127.0.0.1   open5gs-master' | sudo tee -a /etc/hosts
+echo '10.162.0.1 open5gs-master' | sudo tee -a /etc/hosts
+echo '10.162.0.2 oai-worker'    | sudo tee -a /etc/hosts
+ip addr show | grep 'inet ' | grep -v '127.0.0.1'
+ 
+4. ติดตั้ง Container Runtime (containerd)
+4.1 ติดตั้ง containerd
+sudo install -m 0755 -d /etc/apt/keyrings
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg | \
+  sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+sudo chmod a+r /etc/apt/keyrings/docker.gpg
+
+echo "deb [arch=$(dpkg --print-architecture) \
+  signed-by=/etc/apt/keyrings/docker.gpg] \
+  https://download.docker.com/linux/ubuntu \
+  $(. /etc/os-release && echo $VERSION_CODENAME) stable" | \
+  sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+
+sudo apt-get update
+sudo apt-get install -y containerd.io
+
+4.2 ตั้งค่า containerd (ห้ามข้ามขั้นตอนนี้!)
+⚠️  SystemdCgroup = true คือการตั้งค่าที่สำคัญที่สุด — ถ้าลืมจะทำให้ Pod ไม่ start และ Node จะ NotReady ตลอดเวลา
+
+sudo mkdir -p /etc/containerd
+containerd config default | sudo tee /etc/containerd/config.toml
+sudo sed -i 's/SystemdCgroup = false/SystemdCgroup = true/g' \
+  /etc/containerd/config.toml
+grep 'SystemdCgroup' /etc/containerd/config.toml   # ต้องเห็น = true
+sudo systemctl restart containerd
+sudo systemctl enable containerd
+sudo systemctl status containerd
+ 
+5. ติดตั้ง Kubernetes (kubeadm, kubelet, kubectl)
+คำสั่ง	หน้าที่
+kubeadm	ตั้งค่า Kubernetes cluster (ใช้ครั้งแรกครั้งเดียว)
+kubelet	agent ที่ทำงานอยู่ตลอดเวลา — คุมการทำงานของ Pod
+kubectl	เครื่องมือ command line สำหรับสั่งงาน Kubernetes
+
+5.1 เพิ่ม Kubernetes Repository
+curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.28/deb/Release.key | \
+  sudo gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+
+echo 'deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] \
+  https://pkgs.k8s.io/core:/stable:/v1.28/deb/ /' | \
+  sudo tee /etc/apt/sources.list.d/kubernetes.list
+
+sudo apt-get update
+
+5.2 ติดตั้งและ Lock Version
+sudo apt-get install -y kubelet kubeadm kubectl
+sudo apt-mark hold kubelet kubeadm kubectl
+kubeadm version && kubectl version --client
+
+5.3 สร้าง Kubernetes Cluster (Master Node)
+⚠️  แทน 10.162.0.1 ด้วย IP จริงของ Server 1 ถ้า IP ต่างกัน
+
+sudo kubeadm init \
+  --apiserver-advertise-address=10.162.0.1 \
+  --pod-network-cidr=10.244.0.0/16 \
+  --cri-socket=unix:///var/run/containerd/containerd.sock
+
+# ถ้าสำเร็จจะเห็น:
+# Your Kubernetes control-plane has initialized successfully!
+
+💡  สำคัญ! บันทึก 'kubeadm join ...' command ที่ปรากฏเอาไว้ — จะใช้ใน Section 12 เพื่อ join Server 2 เข้า cluster
+
+5.4 ตั้งค่า kubectl
+mkdir -p $HOME/.kube
+sudo cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
+sudo chown $(id -u):$(id -g) $HOME/.kube/config
+kubectl get nodes   # Node จะ NotReady จนกว่าติดตั้ง CNI
+
+5.5 อนุญาตให้ Master Node รัน Pod ได้
+เนื่องจาก Open5GS รันบน Master Node ต้องลบ taint ออก:
+kubectl taint nodes --all node-role.kubernetes.io/control-plane-
+kubectl describe node open5gs-master | grep Taint   # ต้องไม่มี Taint แล้ว
+ 
+6. ติดตั้ง CNI Plugin (Flannel)
+kubectl apply -f https://github.com/flannelio/flannel/releases/latest/download/kube-flannel.yml
+kubectl get pods -n kube-flannel -w   # รอจนเห็น Running แล้ว Ctrl+C
+kubectl get nodes                     # ต้องเป็น Ready
+
+⚠️  ถ้า Node ยังเป็น NotReady หลัง 5 นาที ให้ตรวจสอบ: sudo systemctl status kubelet
+
+7. ติดตั้ง Helm
+Helm คือ App Store สำหรับ Kubernetes ช่วยให้ติดตั้ง Open5GS ได้ง่ายด้วยคำสั่งเดียว
+curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+helm version   # ควรเห็น version: v3.x.x
+
+8. ติดตั้ง gtp5g Kernel Module
+gtp5g คือ Kernel module ที่ให้ Linux รองรับ GTP-U tunnel ซึ่ง UPF ใช้ส่ง data packet ของ 5G — ถ้าไม่มีตัวนี้ UPF จะ crash
+sudo apt-get install -y linux-headers-$(uname -r) gcc make git
+git clone https://github.com/free5gc/gtp5g.git
+cd gtp5g && make && sudo make install
+sudo modprobe gtp5g
+echo 'gtp5g' | sudo tee -a /etc/modules-load.d/gtp5g.conf
+lsmod | grep gtp5g   # ต้องเห็น gtp5g
+cd ..
+ 
+9. Deploy Open5GS ด้วย Helm Chart
+9.1 เพิ่ม Helm Repository และสร้าง Namespace
+helm repo add open5gs https://gradiant.github.io/5g-charts/
+helm repo update
+kubectl create namespace open5gs
+helm search repo open5gs
+
+9.2 สร้างไฟล์ค่าตั้งค่า (values.yaml)
+⚠️  UE Subnet เปลี่ยนเป็น 10.45.0.0/16 แล้ว — ห้ามใช้ 10.45.0.0/16 อีกต่อไป
+
+cat <<'EOF' > open5gs-values.yaml
+# Open5GS Configuration — Lab บพข. v2.1
+# MCC=001, MNC=01, IP=10.162.0.1, UE Subnet: 10.45.0.0/16
+
+mongodb:
+  enabled: true
+  persistence:
+    enabled: true
+    size: 10Gi
+
+amf:
+  enabled: true
+  service:
+    ngap:
+      type: NodePort
+      nodePort: 38412
+  config:
+    amf:
+      plmn_support:
+        - plmn_id:
+            mcc: "001"
+            mnc: "01"
+          s_nssai:
+            - sst: 1
+              sd: '0xffffff'
+      network_name:
+        full: Open5GS-Lab
+        short: O5GS
+      amf_name: Open5GS-AMF0
+
+smf:
+  enabled: true
+  config:
+    smf:
+      subnet:
+        - addr: 10.45.0.1/16   # เปลี่ยนจาก 10.45.0.1/16
+          dnn: internet
+
+upf:
+  enabled: true
+  service:
+    gtpu:
+      type: NodePort
+      nodePort: 32152
+  config:
+    upf:
+      subnet:
+        - addr: 10.45.0.1/16   # เปลี่ยนจาก 10.45.0.1/16
+          dnn: internet
+
+webui:
+  enabled: true
+  service:
+    type: NodePort
+    nodePort: 30080
+
+nrf:  { enabled: true }
+ausf: { enabled: true }
+udm:  { enabled: true }
+udr:  { enabled: true }
+pcf:  { enabled: true }
+bsf:  { enabled: true }
+nssf: { enabled: true }
+EOF
+
+9.3 Deploy Open5GS
+helm install open5gs open5gs/open5gs \
+  --namespace open5gs \
+  -f open5gs-values.yaml
+
+kubectl get pods -n open5gs -w   # รอจนทุก Pod Running แล้ว Ctrl+C
+
+💡  รอจนกว่าทุก Pod เป็น Running ก่อนทำขั้นตอนถัดไป
+
+9.4 ตรวจสอบการ Deploy
+kubectl get pods -n open5gs
+kubectl get svc  -n open5gs
+kubectl logs -n open5gs -l app=open5gs-amf --tail=20
+kubectl logs -n open5gs -l app=open5gs-upf --tail=20
+ 
+10. ตั้งค่า NAT สำหรับ UPF
+UE จะได้รับ IP ในช่วง 10.45.0.0/16 จาก UPF แต่ต้องการออก internet ผ่าน IP จริงของ Server ต้องตั้งค่า NAT ก่อน
+# หา network interface หลัก เช่น eth0, ens3, enp0s3
+ip route | grep default
+
+# เปิด IP Forwarding
+echo 'net.ipv4.ip_forward = 1' | sudo tee -a /etc/sysctl.conf
+sudo sysctl -p
+
+# ตั้งค่า NAT — แทน eth0 ด้วย interface จริง
+sudo iptables -t nat -A POSTROUTING -s 10.45.0.0/16 -o eth0 -j MASQUERADE
+
+# บันทึก rules ให้คงอยู่หลัง reboot
+sudo apt-get install -y iptables-persistent
+sudo netfilter-persistent save
+
+# ตรวจสอบ
+sudo iptables -t nat -L POSTROUTING -v
+
+11. เพิ่ม Subscriber ผ่าน WebUI
+11.1 เปิด WebUI
+เปิด browser บนคอมพิวเตอร์ใด ๆ ในเครือข่ายเดียวกัน แล้วไปที่:
+URL:      http://10.162.0.1:30080
+Username: admin
+Password: 1423
+
+11.2 เพิ่ม Subscriber ใหม่
+กดปุ่ม + (Add Subscriber) แล้วกรอกข้อมูลตามตาราง:
+
+Field ใน WebUI	ค่าที่ต้องกรอก
+IMSI	001010000000001
+Subscriber Key (K)	465B5CE8B199B49FAA5F0A2EE238A6BC
+Operator Key (OPc)	E8ED289DEBA952E4283B54E88E6183CA
+AMF	8000
+APN/DNN	internet
+SST (Slice/Service Type)	1
+SD (Slice Differentiator)	ffffff
+PLMN (MCC/MNC)	001/01 (ถูก set อัตโนมัติ)
+
+⚠️  ค่า K และ OPc ต้องตรงกับ SIM card หรือ software UE ที่จะใช้ทดสอบ ค่าข้างบนคือค่า default สำหรับ test
+ 
+─── ส่วนที่ 2: Join Server 2 เข้า Cluster และ Deploy OAI CU/DU ───
+
+⚠️  ทำทุกคำสั่งในส่วนที่ 2 บน Server 2 (IP: 10.162.0.2) เท่านั้น ยกเว้นระบุไว้อย่างอื่น
+
+12. เตรียม Server 2 และ Join Kubernetes Cluster
+12.1 อัปเดต OS และติดตั้ง Package พื้นฐาน
+sudo apt-get update && sudo apt-get upgrade -y
+sudo apt-get install -y curl wget git vim net-tools \
+  apt-transport-https ca-certificates gnupg \
+  lsb-release software-properties-common build-essential
+
+12.2 ติดตั้ง Low-Latency Kernel (แนะนำ)
+OAI ต้องการ timing ที่แม่นยำมาก Low-latency kernel ลด delay ใน processing:
+sudo apt-get install -y linux-lowlatency linux-headers-lowlatency
+sudo reboot
+# หลัง reboot ตรวจสอบ:
+uname -r   # ควรเห็น '-lowlatency' ใน version
+
+12.3 ตั้งค่า Hostname และ Hosts
+sudo hostnamectl set-hostname oai-worker
+echo '127.0.0.1   oai-worker'      | sudo tee -a /etc/hosts
+echo '10.162.0.1 open5gs-master' | sudo tee -a /etc/hosts
+echo '10.162.0.2 oai-worker'    | sudo tee -a /etc/hosts
+ping -c 3 10.162.0.1   # ทดสอบ connectivity ไปยัง Master
+
+12.4 ปิด Swap
+sudo swapoff -a
+sudo sed -i '/ swap / s/^\(.*\)$/#\1/g' /etc/fstab
+free -h   # ต้องเห็น Swap: 0B 0B 0B
+
+12.5 ตั้งค่า Kernel สำหรับ Kubernetes
+cat <<EOF | sudo tee /etc/modules-load.d/k8s.conf
+overlay
+br_netfilter
+EOF
+sudo modprobe overlay && sudo modprobe br_netfilter
+
+cat <<EOF | sudo tee /etc/sysctl.d/k8s.conf
+net.bridge.bridge-nf-call-iptables  = 1
+net.bridge.bridge-nf-call-ip6tables = 1
+net.ipv4.ip_forward                 = 1
+EOF
+sudo sysctl --system
+ 
+12.6 ติดตั้ง containerd บน Server 2
+ทำเหมือน Section 4 ทุกประการ (Server 2 ต้องมี containerd ด้วย):
+sudo install -m 0755 -d /etc/apt/keyrings
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg | \
+  sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+sudo chmod a+r /etc/apt/keyrings/docker.gpg
+
+echo "deb [arch=$(dpkg --print-architecture) \
+  signed-by=/etc/apt/keyrings/docker.gpg] \
+  https://download.docker.com/linux/ubuntu \
+  $(. /etc/os-release && echo $VERSION_CODENAME) stable" | \
+  sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+
+sudo apt-get update && sudo apt-get install -y containerd.io
+
+sudo mkdir -p /etc/containerd
+containerd config default | sudo tee /etc/containerd/config.toml
+sudo sed -i 's/SystemdCgroup = false/SystemdCgroup = true/g' \
+  /etc/containerd/config.toml
+sudo systemctl restart containerd && sudo systemctl enable containerd
+
+12.7 ติดตั้ง kubeadm, kubelet, kubectl บน Server 2
+curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.28/deb/Release.key | \
+  sudo gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+
+echo 'deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] \
+  https://pkgs.k8s.io/core:/stable:/v1.28/deb/ /' | \
+  sudo tee /etc/apt/sources.list.d/kubernetes.list
+
+sudo apt-get update
+sudo apt-get install -y kubelet kubeadm kubectl
+sudo apt-mark hold kubelet kubeadm kubectl
+
+12.8 Join Kubernetes Cluster
+⚠️  ใช้ 'kubeadm join ...' command ที่ได้จาก Section 5.3 บน Server 1 — ห้ามใช้ตัวอย่างด้านล่างโดยตรง token และ hash จะแตกต่างกัน
+
+# รัน command ที่ได้จาก Server 1 (Section 5.3) ตัวอย่าง:
+sudo kubeadm join 10.162.0.1:6443 \
+  --token <YOUR_TOKEN> \
+  --discovery-token-ca-cert-hash sha256:<YOUR_HASH>
+
+# ถ้า token หมดอายุ ให้ regenerate บน Server 1:
+# kubeadm token create --print-join-command
+
+12.9 ตรวจสอบการ Join (รันบน Server 1)
+kubectl get nodes
+# ต้องเห็น:
+# NAME              STATUS   ROLES           AGE   VERSION
+# open5gs-master    Ready    control-plane   Xm    v1.28.x
+# oai-worker        Ready    <none>          Xm    v1.28.x
+
+💡  ถ้า oai-worker แสดง Ready แสดงว่า join สำเร็จแล้ว ถ้า NotReady รอสัก 1-2 นาที หรือตรวจสอบ containerd บน Server 2
+ 
+13. Label Worker Node สำหรับ OAI
+กำหนด label ให้ Node เพื่อให้ OAI Pod ถูก schedule บน Server 2 โดยเฉพาะ — รันบน Server 1:
+kubectl label node oai-worker oai-gnb=enabled
+kubectl label node oai-worker node-type=ran
+kubectl get nodes --show-labels | grep oai-worker
+
+14. สร้าง OAI ConfigMap สำหรับ Kubernetes
+14.1 ใช้ OAI Official Docker Image
+OAI มี official Docker image พร้อมใช้งาน ไม่จำเป็นต้อง build เอง สำหรับ simulation mode:
+# Official image: oaisoftwarealliance/oai-gnb
+# Tag ที่ stable: develop หรือ 2024.w51
+
+14.2 สร้าง Namespace และ ConfigMap — รันบน Server 1
+kubectl create namespace oai
+
+cat <<'EOF' > oai-gnb-configmap.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: oai-gnb-config
+  namespace: oai
+data:
+  gnb.conf: |
+    Active_gNBs = ( "oai-gnb" );
+    Asn1_verbosity = "none";
+    gNBs = (
+      {
+        GNB_ID   = 0xe00;
+        gNB_name = "oai-gnb";
+        plmn_list = (
+          { mcc = 001; mnc = 01; mnc_length = 2;
+            snssaiList = ( { sst = 1; sd = 0xffffff; } );
+          }
+        );
+        tracking_area_code = 1;
+        nr_cellid = 12345678L;
+        amf_ip_address = (
+          { ipv4 = "10.162.0.1";
+            active = "yes"; preference = "ipv4"; }
+        );
+        NETWORK_INTERFACES : {
+          GNB_IPV4_ADDRESS_FOR_NG_AMF = "10.162.0.2";
+          GNB_IPV4_ADDRESS_FOR_NGU    = "10.162.0.2";
+          GNB_PORT_FOR_S1U            = 2152;
+        };
+        servingCellConfigCommon = (
+          { physCellId = 0;
+            absoluteFrequencySSB = 641272;
+            dl_frequencyBand = 78;
+            dl_absoluteFrequencyPointA = 640008;
+            dl_carrierBandwidth = 106; dl_subcarrierSpacing = 1;
+            ul_frequencyBand = 78;
+            ul_absoluteFrequencyPointA = 640008;
+            ul_carrierBandwidth = 106; ul_subcarrierSpacing = 1;
+          }
+        );
+      }
+    );
+    security = {
+      preferred_integrity_algorithm = [ "nia2", "nia0" ];
+      preferred_ciphering_algorithm = [ "nea0", "nea2" ];
+    };
+EOF
+kubectl apply -f oai-gnb-configmap.yaml
+ 
+15. Deploy OAI gNB บน Worker Node
+15.1 สร้าง Deployment
+cat <<'EOF' > oai-gnb-deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: oai-gnb
+  namespace: oai
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: oai-gnb
+  template:
+    metadata:
+      labels:
+        app: oai-gnb
+    spec:
+      nodeSelector:
+        oai-gnb: "enabled"      # รันบน Worker Node (Server 2)
+      hostNetwork: true          # ใช้ IP ของ host สำหรับ N2/N3
+      containers:
+        - name: oai-gnb
+          image: oaisoftwarealliance/oai-gnb:develop
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            privileged: true
+          command:
+            - /opt/oai-gnb/bin/nr-softmodem
+          args:
+            - -O
+            - /opt/oai-gnb/etc/gnb.conf
+            - --sa
+            - --rfsim
+            - --log_config.global_log_options
+            - level,nocolor,time
+          volumeMounts:
+            - name: gnb-config
+              mountPath: /opt/oai-gnb/etc/gnb.conf
+              subPath: gnb.conf
+      volumes:
+        - name: gnb-config
+          configMap:
+            name: oai-gnb-config
+EOF
+kubectl apply -f oai-gnb-deployment.yaml
+
+15.2 ตรวจสอบการ Deploy OAI gNB
+kubectl get pods -n oai -w           # รอจนเห็น Running
+kubectl logs -n oai -l app=oai-gnb -f --tail=50   # ต้องเห็น 'NG connection up'
+kubectl get pods -n oai -o wide       # คอลัมน์ NODE ต้องเป็น oai-worker
+
+💡  ถ้าเห็น 'NG connection up' และ 'Registration with AMF' ใน log — แสดงว่า OAI เชื่อมต่อกับ Open5GS สำเร็จ
+
+16. Deploy NR-UE Simulator บน Kubernetes
+cat <<'EOF' > oai-ue-deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: oai-nr-ue
+  namespace: oai
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: oai-nr-ue
+  template:
+    metadata:
+      labels:
+        app: oai-nr-ue
+    spec:
+      nodeSelector:
+        oai-gnb: "enabled"
+      hostNetwork: true
+      containers:
+        - name: oai-nr-ue
+          image: oaisoftwarealliance/oai-nr-ue:develop
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            privileged: true
+          command: ["/opt/oai-nr-ue/bin/nr-uesoftmodem"]
+          args:
+            - "-r"
+            - "106"
+            - "--numerology"
+            - "1"
+            - "--band"
+            - "78"
+            - "-C"
+            - "3619200000"
+            - "--rfsim"
+            - "--sa"
+            - "--uicc0.imsi"
+            - "001010000000001"
+            - "--uicc0.nssai_sst"
+            - "1"
+            - "--uicc0.nssai_sd"
+            - "0xffffff"
+            - "--uicc0.key"
+            - "465B5CE8B199B49FAA5F0A2EE238A6BC"
+            - "--uicc0.opc"
+            - "E8ED289DEBA952E4283B54E88E6183CA"
+EOF
+kubectl apply -f oai-ue-deployment.yaml
+kubectl get pods -n oai -w
+
+⚠️  ค่า IMSI, key, opc ต้องตรงกับ Subscriber ที่เพิ่มใน WebUI (Section 11.2)
+ 
+─── ส่วนที่ 3: เชื่อมต่อและทดสอบระบบ ───
+
+17. ทดสอบการเชื่อมต่อระบบ
+17.1 สัญญาณที่ต้องเห็นว่าระบบทำงาน
+Component	Log ที่ต้องเห็น	ความหมาย
+Open5GS AMF	InitialUEMessage	OAI ส่ง UE มาให้ AMF แล้ว
+Open5GS AMF	Registration Complete	UE ลงทะเบียนสำเร็จ
+Open5GS SMF	PDU Session Establishment	สร้าง data session สำเร็จ
+OAI gNB Pod	NG connection up	เชื่อมต่อกับ AMF สำเร็จ
+OAI UE Pod	Received RRC Setup	UE เชื่อมต่อกับ gNB สำเร็จ
+
+17.2 ตรวจสอบ Log Open5GS
+kubectl logs -n open5gs -l app=open5gs-amf -f --tail=50
+kubectl logs -n open5gs -l app=open5gs-smf -f --tail=50
+kubectl logs -n open5gs -l app=open5gs-upf -f --tail=50
+
+17.3 ทดสอบ Data Plane (Ping ผ่าน UE Tunnel)
+หลังจาก UE เชื่อมต่อสำเร็จ จะมี interface oaitun_ue1 บน Worker Node:
+# เข้าไปใน UE Pod
+kubectl exec -n oai -it $(kubectl get pod -n oai -l app=oai-nr-ue \
+  -o jsonpath='{.items[0].metadata.name}') -- bash
+
+# ตรวจสอบ interface
+ip addr show oaitun_ue1
+
+# ทดสอบ ping ผ่าน UE tunnel (UE Subnet: 10.45.0.0/16)
+ping -I oaitun_ue1 8.8.8.8
+# ถ้า ping สำเร็จ — ระบบ 5G ทำงานครบ end-to-end!
+ 
+18. แก้ไขปัญหาที่พบบ่อย (Troubleshooting)
+18.1 ปัญหาบน Server 1 (Open5GS / Master Node)
+อาการ	สาเหตุที่น่าจะเป็น	วิธีแก้ไข
+Node NotReady	containerd หรือ kubelet ไม่ทำงาน	sudo systemctl restart containerd kubelet
+Pod Pending ไม่ขึ้น	ยังมี taint บน master node	kubectl taint nodes --all node-role...control-plane-
+UPF CrashLoopBackOff	gtp5g module ไม่ได้โหลด	sudo modprobe gtp5g แล้ว restart pod
+WebUI เข้าไม่ได้	firewall บล็อก port 30080	sudo ufw allow 30080/tcp
+Pod ImagePullBackOff	internet ไม่ทำงาน	ตรวจสอบ DNS: ping 8.8.8.8
+
+18.2 ปัญหา Worker Node / OAI Pod
+อาการ	สาเหตุที่น่าจะเป็น	วิธีแก้ไข
+oai-worker NotReady	containerd ไม่ได้รัน	sudo systemctl restart containerd (Server 2)
+OAI Pod ไม่ถูก schedule	ไม่มี label	kubectl label node oai-worker oai-gnb=enabled
+NG connection failed	AMF IP/Port ผิด หรือ firewall	nc -zv 10.162.0.1 38412
+UE registration fail	IMSI/K/OPc ไม่ตรง	ตรวจสอบค่าให้ตรงกับ WebUI
+PLMN mismatch	MCC/MNC ไม่ตรงกัน	ตรวจสอบ mcc=001 mnc=01 ทั้งสองฝั่ง
+Ping ผ่าน UE ไม่ได้	NAT subnet ผิด	ตรวจสอบ iptables ใช้ 10.45.0.0/16
+
+18.3 คำสั่ง Debug ที่ใช้บ่อย
+# Open5GS
+kubectl get pods -n open5gs
+kubectl describe pod -n open5gs <ชื่อ-pod>
+kubectl logs -n open5gs <ชื่อ-pod> --previous
+kubectl get pods -n oai -o wide      # ดูว่า Pod อยู่บน Node ไหน
+
+# Worker Node
+kubectl get nodes -o wide
+kubectl describe node oai-worker
+
+# ทดสอบ connectivity
+nc -zv 10.162.0.1 38412   # NGAP port
+nc -zv 10.162.0.1 2152    # GTP-U port
+
+# Reset Kubernetes (ใช้เมื่อจำเป็นจริง ๆ)
+sudo kubeadm reset && sudo rm -rf $HOME/.kube
+ 
+19. Checklist — ทำเครื่องหมาย ✓ เมื่อทำสำเร็จ
+
+Server 1 — Open5GS (Master Node)
+✓	ขั้นตอน	สิ่งที่ต้องเห็น
+[ ]	3.2 ปิด Swap	free -h แสดง Swap: 0
+[ ]	3.3 Kernel modules	lsmod | grep br_netfilter แสดงผล
+[ ]	4.2 containerd	SystemdCgroup = true ใน config
+[ ]	5.3 kubeadm init	Your Kubernetes control-plane initialized!
+[ ]	5.5 Remove taint	kubectl describe node ไม่มี Taint
+[ ]	6. Flannel CNI	kubectl get nodes แสดง Ready
+[ ]	8. gtp5g	lsmod | grep gtp5g แสดงผล
+[ ]	9.3 Deploy Open5GS	kubectl get pods -n open5gs ทุกตัว Running
+[ ]	10. NAT	iptables -t nat -L แสดง MASQUERADE rule 10.45.0.0/16
+[ ]	11. WebUI	เข้า http://10.162.0.1:30080 ได้
+[ ]	11.2 Subscriber	เพิ่ม IMSI 001010000000001 สำเร็จ
+
+Server 2 — OAI CU/DU (Worker Node)
+✓	ขั้นตอน	สิ่งที่ต้องเห็น
+[ ]	12.2 Low-latency kernel	uname -r แสดง -lowlatency
+[ ]	12.4 ปิด Swap	free -h แสดง Swap: 0
+[ ]	12.6 containerd	SystemdCgroup = true ใน config
+[ ]	12.7 kubeadm/kubectl	kubectl version --client แสดง v1.28.x
+[ ]	12.8 Join cluster	kubeadm join สำเร็จ
+[ ]	12.9 Node Ready	kubectl get nodes แสดง oai-worker Ready
+[ ]	13. Label node	kubectl get nodes --show-labels แสดง oai-gnb=enabled
+[ ]	14. ConfigMap	kubectl get configmap -n oai แสดง oai-gnb-config
+[ ]	15. OAI gNB Pod	Log แสดง 'NG connection up'
+[ ]	16. UE Pod	Log แสดง 'Received RRC Setup'
+[ ]	17.3 Ping ผ่าน UE	ping -I oaitun_ue1 8.8.8.8 สำเร็จ
+ 
+Appendix: ข้อมูลอ้างอิงและ Resources
+รายการ	URL / ค่า
+Open5GS Official	https://open5gs.org
+Open5GS GitHub	https://github.com/open5gs/open5gs
+Open5GS Helm Chart	https://gradiant.github.io/5g-charts/
+OAI GitLab	https://gitlab.eurecom.fr/oai/openairinterface5g
+OAI Docker Hub	https://hub.docker.com/u/oaisoftwarealliance
+gtp5g GitHub	https://github.com/free5gc/gtp5g
+Kubernetes Docs	https://kubernetes.io/docs/
+Flannel GitHub	https://github.com/flannel-io/flannel
+MCC/MNC (Lab)	MCC=001, MNC=01
+AMF NGAP Port	38412 (SCTP)
+UPF GTP-U Port	2152 (UDP)
+WebUI Port	30080 (TCP/NodePort)
+UE IP Subnet	10.45.0.0/16  (เปลี่ยนใหม่ใน v2.1)
+Pod Network CIDR	10.244.0.0/16 (Flannel)
+SST / SD	1 / 0xffffff
+
+— จัดทำสำหรับโครงการวิจัย บพข.  |  Open5GS + OAI 5G Lab Guide v2.1 —
+By NSS | NSS-Networks
