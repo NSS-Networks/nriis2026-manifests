@@ -1,0 +1,191 @@
+สรุปขั้นตอนการตั้งค่า Real-Time Kernel
+และการติดตั้ง Kubernetes สำหรับ OAI CU/DU
+trinergy-oai (Server 2: 10.162.0.2) → Open5GS Core (Server 1: 10.162.0.1)
+เรียบเรียงโดย: NSS-Networks
+เวอร์ชัน 3.0  |  อัปเดต: เพิ่ม Phase 1 Kubernetes Installation + OAI Architecture
+
+
+1. Overview — System Architecture
+ระบบประกอบด้วย 2 Server เชื่อมกันผ่าน K8s Cluster:
+
+Component	Server	IP	Software
+K8s Control Plane + 5G Core	Server 1	10.162.0.1	Open5GS (AMF/UPF/SMF/NRF/...)
+K8s Worker Node + RAN	Server 2	10.162.0.2	OAI CU + DU (Split)
+Radio Unit	—	—	USRP NI310 (USB/PCIe ต่อกับ Server 2)
+
+สถาปัตยกรรม CU/DU Split บนเครื่องเดียว (Single-host Split):
+•	CU และ DU รันเป็นคนละ Pod บน Server 2
+•	เชื่อมกันผ่าน F1 interface (ภายใน K8s cluster network)
+•	CU ส่ง N2 → AMF และ N3 → UPF ที่ Server 1
+•	DU ต่อกับ USRP NI310 โดยตรงผ่าน RF interface
+•	รองรับการขยาย: เพิ่ม DU Pod ใหม่สำหรับ Airspan 7.2 ได้ทีหลังโดยไม่ต้อง redo CU
+
+— ส่วนที่ 1: การตั้งค่า Real-Time Kernel (ทำไปแล้ว) —
+2. การติดตั้ง Real-Time Kernel (RT Kernel)
+RT Kernel จำเป็นสำหรับ OAI DU เพื่อให้ระบบมี latency ต่ำและ deterministic scheduling
+2.1 คำสั่งติดตั้ง
+sudo apt update
+sudo apt install linux-image-$(uname -r)-realtime linux-headers-$(uname -r)-realtime -y
+dpkg --list | grep linux-image   # ตรวจสอบ
+
+
+3. การตั้งค่า GRUB
+3.1 แก้ไข /etc/default/grub
+sudo nano /etc/default/grub
+ค่าที่ตั้ง:
+GRUB_DEFAULT=saved
+GRUB_SAVEDEFAULT=true
+GRUB_TIMEOUT_STYLE=hidden
+GRUB_TIMEOUT=0
+GRUB_CMDLINE_LINUX_DEFAULT="quiet splash intel_pstate=disable processor.max_cstate=1 idle=poll nosmt"
+3.2 ตั้ง Default Kernel
+grep -i "menuentry" /boot/grub/grub.cfg | grep -i real
+sudo grub-set-default "Advanced options for Ubuntu>Ubuntu, with Linux x.x.x-realtime"
+sudo update-grub
+
+4. CPU Governor, SMT และ C State
+4.1 CPU Governor — ทำให้ถาวรด้วย Systemd
+sudo apt install cpufrequtils -y
+echo 'GOVERNOR="performance"' | sudo tee /etc/default/cpufrequtils
+sudo nano /etc/systemd/system/cpu-performance.service
+เนื้อหา service file:
+[Unit]
+Description=Set CPU Governor to Performance
+After=multi-user.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/cpupower frequency-set -g performance
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+sudo systemctl daemon-reload
+sudo systemctl enable cpu-performance.service
+sudo systemctl start cpu-performance.service
+4.2 ปิด SMT ผ่าน GRUB (AMD CPU — BIOS ไม่มีตัวเลือก SMT)
+เพิ่ม nosmt ใน GRUB_CMDLINE_LINUX_DEFAULT แล้ว sudo update-grub
+4.3 C State — ปิดใน BIOS Lenovo
+•	Advanced → CPU Setup → C State Support → Disabled
+•	Advanced → CPU Setup → CPB Mode → Disabled
+
+5. คำสั่ง Quick Check หลัง Reboot
+uname -r                                              # ต้องเห็น -realtime
+cat /proc/cmdline                                     # ต้องมี nosmt, intel_pstate=disable
+cat /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor  # ต้องเห็น performance
+cat /sys/devices/system/cpu/smt/active               # ต้องเห็น 0
+
+6. ปัญหาที่พบและการแก้ไข (RT Kernel)
+
+ปัญหา	สาเหตุ	วิธีแก้
+cpufreq-info ไม่แสดง governor ชัดเจน	grep pattern ไม่ตรง	ใช้ cat /sys/.../scaling_governor
+Governor reset เป็น powersave หลัง reboot	cpufrequtils run ก่อน kernel จัด core	สร้าง cpu-performance.service
+BIOS ไม่มี SMT option (Lenovo AMD)	BIOS ซ่อน option	ใช้ nosmt ใน GRUB cmdline
+RT Kernel ไม่โหลดหลังติดตั้ง	ต้อง reboot	ทำ grub-set-default แล้ว reboot
+
+7. สถานะสุดท้าย RT Kernel
+
+รายการ	ผลลัพธ์	สถานะ
+RT Kernel	6.8.1-1015-realtime	✅
+intel_pstate=disable	ยืนยันใน /proc/cmdline	✅
+processor.max_cstate=1	ยืนยันใน /proc/cmdline	✅
+idle=poll + nosmt	ยืนยันใน /proc/cmdline	✅
+SMT/HT	smt/active = 0 (4 cores)	✅
+C State + CPB (BIOS)	Disabled	✅
+CPU Governor	performance ทุก 4 cores (persistent)	✅
+
+
+
+
+— ส่วนที่ 2: การติดตั้ง Kubernetes บน Server 2 —
+8. ข้อมูล Environment
+
+รายการ	ค่าที่ใช้	หมายเหตุ
+K8s Distribution	kubeadm (vanilla)	เหมือนกับ Server 1
+K8s Version	1.28	
+CNI Plugin	Calico	ตามที่ Server 1 ใช้
+Container Runtime	containerd	
+Network Interface	ens3 (*)	* แก้เป็นชื่อจริงด้วย ip addr show
+Server 2 IP	10.162.0.2	
+Server 1 IP (Master)	10.162.0.1	K8s Control Plane
+(*) ตรวจสอบชื่อ interface จริงด้วย: ip -br addr
+
+9. Phase 1 — เตรียมระบบก่อนติดตั้ง K8s
+9.1 ปิด Swap
+sudo swapoff -a
+sudo sed -i '/ swap / s/^\(.*\)$/#\1/g' /etc/fstab
+9.2 ตั้งค่า Kernel Modules
+cat <<EOF | sudo tee /etc/modules-load.d/k8s.conf
+overlay
+br_netfilter
+EOF
+
+sudo modprobe overlay
+sudo modprobe br_netfilter
+9.3 ตั้งค่า sysctl
+cat <<EOF | sudo tee /etc/sysctl.d/k8s.conf
+net.bridge.bridge-nf-call-iptables  = 1
+net.bridge.bridge-nf-call-ip6tables = 1
+net.ipv4.ip_forward                 = 1
+EOF
+
+sudo sysctl --system
+
+10. Phase 2 — ติดตั้ง Container Runtime (containerd)
+sudo apt update
+sudo apt install -y containerd
+สร้างและแก้ไข config:
+sudo mkdir -p /etc/containerd
+containerd config default | sudo tee /etc/containerd/config.toml
+sudo sed -i 's/SystemdCgroup = false/SystemdCgroup = true/' /etc/containerd/config.toml
+sudo systemctl restart containerd
+sudo systemctl enable containerd
+ตรวจสอบ:
+sudo systemctl status containerd
+
+11. Phase 3 — ติดตั้ง kubeadm, kubelet, kubectl
+sudo apt install -y apt-transport-https ca-certificates curl gpg
+เพิ่ม K8s repository:
+curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.28/deb/Release.key | \
+sudo gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+
+echo 'deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] \
+https://pkgs.k8s.io/core:/stable:/v1.28/deb/ /' | \
+sudo tee /etc/apt/sources.list.d/kubernetes.list
+ติดตั้งและ lock version:
+sudo apt update
+sudo apt install -y kubelet kubeadm kubectl
+sudo apt-mark hold kubelet kubeadm kubectl
+
+12. Phase 4 — Join Cluster กับ Server 1
+12.1 สร้าง Join Token บน Server 1
+รันบน Server 1 (10.162.0.1):
+kubeadm token create --print-join-command
+ผลที่ได้ (ตัวอย่าง):
+kubeadm join 10.162.0.1:6443 --token xxxxx \
+  --discovery-token-ca-cert-hash sha256:yyyyy
+12.2 Join Cluster บน Server 2
+นำคำสั่งจาก Server 1 มารันบน Server 2:
+sudo kubeadm join 10.162.0.1:6443 --token xxxxx \
+  --discovery-token-ca-cert-hash sha256:yyyyy
+
+12.3 ตรวจสอบบน Server 1
+kubectl get nodes
+ผลที่ถูกต้อง:
+NAME             STATUS   ROLES           AGE
+server1          Ready    control-plane   xxx
+trinergy-oai     Ready    <none>          xxx
+
+
+13. ขั้นตอนถัดไป (Phase 5-7)
+
+Phase	งาน	สถานะ
+Phase 1: RT Kernel	ติดตั้งและตั้งค่าทั้งหมด	✅ เสร็จแล้ว
+Phase 2: K8s Worker	เตรียมระบบ + containerd + kubeadm	⏳ กำลังทำ
+Phase 3: Join Cluster	Join Server 2 เข้า K8s cluster	⏳ รอ Phase 2
+Phase 4: OAI Helm	ติดตั้ง OAI CU/DU via Helm Chart	📋 วางแผนแล้ว
+Phase 5: Config CU/DU	ตั้งค่า N2/N3 → Server 1, F1 interface	📋 วางแผนแล้ว
+Phase 6: USRP NI310	เชื่อมต่อ RF, ตั้งค่า DU → RU	📋 วางแผนแล้ว
+Phase 7: ทดสอบ	UERANSIM หรือ UE จริง	📋 วางแผนแล้ว
+
+จัดทำโดย: NSS / |  NSS-Networks  |  v3.0
