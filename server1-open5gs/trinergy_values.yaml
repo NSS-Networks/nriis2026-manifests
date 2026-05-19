@@ -10,14 +10,20 @@ mongodb:
     accessModes:
       - ReadWriteOnce
     size: 8Gi
+    mountPath: /data/db
+  updateStrategy:
+    type: Recreate
   podSecurityContext:
     enabled: false
   containerSecurityContext:
     enabled: false
-
+  nodeSelector:
+    kubernetes.io/hostname: open5gs-master
 populate:
   enabled: false
-
+  initCommands:
+    - open5gs-dbctl create_admin admin 1423
+    - open5gs-dbctl add_ue_with_apn 001010123456789 00112233445566778899AABBCCDDEEFF 000102030405060708090A0B0C0D0E0F internet
 mme:
   enabled: false
 sgwc:
@@ -30,29 +36,74 @@ pcrf:
   enabled: false
 webui:
   enabled: false
-
 nrf:
   enabled: true
+  nodeSelector:
+    kubernetes.io/hostname: open5gs-master
 scp:
   enabled: true
+  nodeSelector:
+    kubernetes.io/hostname: open5gs-master
 amf:
   enabled: true
+  updateStrategy:
+    type: Recreate
+  nodeSelector:
+    kubernetes.io/hostname: open5gs-master
+  podSecurityContext:
+    enabled: false
+  containerSecurityContext:
+    guamiList:
+      - plmn_id:
+          mcc: "001"
+          mnc: "01"
+        amf_id:
+          region: 2
+          set: 1
+    taiList:
+      - plmn_id:
+          mcc: "001"
+          mnc: "01"
+        tac: [1]
+    plmnList:
+      - plmn_id:
+          mcc: "001"
+          mnc: "01"
+        s_nssai:
+          - sst: 1
+    networkName: Gradiant
 smf:
   enabled: true
+  nodeSelector:
+    kubernetes.io/hostname: open5gs-master
   config:
     use_mongodb_subscriber: true
     freeDiameter: false
 upf:
   enabled: true
+  nodeSelector:
+    kubernetes.io/hostname: open5gs-master
 ausf:
   enabled: true
+  nodeSelector:
+    kubernetes.io/hostname: open5gs-master
 udm:
   enabled: true
+  nodeSelector:
+    kubernetes.io/hostname: open5gs-master
 udr:
   enabled: true
+  nodeSelector:
+    kubernetes.io/hostname: open5gs-master
 bsf:
   enabled: true
+  nodeSelector:
+    kubernetes.io/hostname: open5gs-master
 nssf:
   enabled: true
+  nodeSelector:
+    kubernetes.io/hostname: open5gs-master
 pcf:
   enabled: true
+  nodeSelector:
+    kubernetes.io/hostname: open5gs-master
