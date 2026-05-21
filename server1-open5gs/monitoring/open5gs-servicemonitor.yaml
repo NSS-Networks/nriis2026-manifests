@@ -1,0 +1,55 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: open5gs-amf-metrics
+  namespace: open5gs
+  labels:
+    app: open5gs-amf-metrics
+spec:
+  selector:
+    app.kubernetes.io/name: amf
+  ports:
+  - name: metrics
+    port: 9801
+    targetPort: 9801
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: open5gs-smf-metrics
+  namespace: open5gs
+  labels:
+    app: open5gs-smf-metrics
+spec:
+  selector:
+    app.kubernetes.io/name: smf
+  ports:
+  - name: metrics
+    port: 9804
+    targetPort: 9804
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: open5gs-metrics
+  namespace: monitoring
+  labels:
+    release: kube-prometheus-stack
+spec:
+  namespaceSelector:
+    matchNames:
+    - open5gs
+  selector:
+    matchExpressions:
+    - key: app
+      operator: In
+      values:
+      - open5gs-amf-metrics
+      - open5gs-smf-metrics
+  endpoints:
+  - port: metrics
+    interval: 15s
+    path: /metrics
+    params: {}
+    scrapeProtocols:
+    - PrometheusText0.0.4

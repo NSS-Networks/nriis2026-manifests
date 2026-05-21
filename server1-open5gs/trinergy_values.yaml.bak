@@ -50,14 +50,6 @@ amf:
     type: Recreate
   nodeSelector:
     kubernetes.io/hostname: open5gs-master
-  config:
-    sbi:
-      client:
-        nrf:
-          enabled: true
-          uri: http://open5gs-nrf-sbi:7777
-        scp:
-          enabled: false
   podSecurityContext:
     enabled: false
   containerSecurityContext:
@@ -79,8 +71,6 @@ amf:
           mnc: "01"
         s_nssai:
           - sst: 1
-          - sst: 1
-            sd: "000001"
     networkName: Gradiant
 smf:
   enabled: true
@@ -89,104 +79,41 @@ smf:
   config:
     use_mongodb_subscriber: true
     freeDiameter: false
-    sbi:
-      client:
-        nrf:
-          enabled: true
-          uri: http://open5gs-nrf-sbi:7777
-        scp:
-          enabled: false
 upf:
   enabled: true
   nodeSelector:
     kubernetes.io/hostname: open5gs-master
-  config:
-    sbi:
-      client:
-        nrf:
-          enabled: true
-          uri: http://open5gs-nrf-sbi:7777
-        scp:
-          enabled: false
 ausf:
   enabled: true
   nodeSelector:
     kubernetes.io/hostname: open5gs-master
-  config:
-    sbi:
-      client:
-        nrf:
-          enabled: true
-          uri: http://open5gs-nrf-sbi:7777
-        scp:
-          enabled: false
 udm:
   enabled: true
   nodeSelector:
     kubernetes.io/hostname: open5gs-master
-  #image:
-    #registry: ghcr.io
-    #repository: nss-networks/open5gs
-    #tag: xor-patch
-    #pullPolicy: IfNotPresent
-  config:
-    sbi:
-      client:
-        nrf:
-          enabled: true
-          uri: http://open5gs-nrf-sbi:7777
-        scp:
-          enabled: false
+  image:
+    registry: ghcr.io
+    repository: nss-networks/open5gs
+    tag: xor-patch
+    pullPolicy: IfNotPresent
 udr:
   enabled: true
   nodeSelector:
     kubernetes.io/hostname: open5gs-master
-  #image:
-    #registry: ghcr.io
-    #repository: nss-networks/open5gs
-    #tag: xor-patch
-    #pullPolicy: IfNotPresent
-  config:
-    sbi:
-      client:
-        nrf:
-          enabled: true
-          uri: http://open5gs-nrf-sbi:7777
-        scp:
-          enabled: false
+  image:
+    registry: ghcr.io
+    repository: nss-networks/open5gs
+    tag: xor-patch
+    pullPolicy: IfNotPresent
 bsf:
   enabled: true
   nodeSelector:
     kubernetes.io/hostname: open5gs-master
-  config:
-    sbi:
-      client:
-        nrf:
-          enabled: true
-          uri: http://open5gs-nrf-sbi:7777
-        scp:
-          enabled: false
 nssf:
   enabled: true
   nodeSelector:
     kubernetes.io/hostname: open5gs-master
-  config:
-    sbi:
-      client:
-        nrf:
-          enabled: true
-          uri: http://open5gs-nrf-sbi:7777
-        scp:
-          enabled: false
 pcf:
   enabled: true
   nodeSelector:
     kubernetes.io/hostname: open5gs-master
-  config:
-    sbi:
-      client:
-        nrf:
-          enabled: true
-          uri: http://open5gs-nrf-sbi:7777
-        scp:
-          enabled: false

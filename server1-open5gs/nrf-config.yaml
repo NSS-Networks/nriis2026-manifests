@@ -1,0 +1,16 @@
+logger:
+  level: info
+global:
+nrf:
+  metrics:
+    server:
+    - address: 0.0.0.0
+      port: 9802
+  serving:
+  - plmn_id:
+      mcc: "001"
+      mnc: "01"
+  sbi:
+    server:
+    - dev: eth0
+      port: 7777

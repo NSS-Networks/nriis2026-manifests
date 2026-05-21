@@ -1,0 +1,87 @@
+mongodb:
+  enabled: true
+  image:
+    registry: docker.io
+    repository: mongo
+    tag: "6.0"
+  persistence:
+    enabled: true
+    storageClass: "local-path"
+    accessModes:
+      - ReadWriteOnce
+    size: 8Gi
+  podSecurityContext:
+    enabled: false
+  containerSecurityContext:
+    enabled: false
+  nodeSelector:
+    kubernetes.io/hostname: open5gs-master
+mme:
+  enabled: true
+  nodeSelector:
+    kubernetes.io/hostname: open5gs-master
+  config:
+    gtpc:
+      client:
+        sgwc:
+          address: "open5gs-4g-sgwc-gtpc"
+          tac: 1
+        smf:
+          address: "open5gs-4g-sgwc-gtpc"
+          tac: 1
+    gummeiList:
+      - plmn_id:
+          mcc: "001"
+          mnc: "01"
+        mme_gid: 2
+        mme_code: 1
+    taiList:
+      - plmn_id:
+          mcc: "001"
+          mnc: "01"
+        tac: [1]
+    networkName: Gradiant
+sgwc:
+  enabled: true
+  nodeSelector:
+    kubernetes.io/hostname: open5gs-master
+sgwu:
+  enabled: true
+  nodeSelector:
+    kubernetes.io/hostname: open5gs-master
+hss:
+  enabled: true
+  nodeSelector:
+    kubernetes.io/hostname: open5gs-master
+pcrf:
+  enabled: true
+  nodeSelector:
+    kubernetes.io/hostname: open5gs-master
+webui:
+  enabled: true
+  nodeSelector:
+    kubernetes.io/hostname: open5gs-master
+populate:
+  enabled: false
+nrf:
+  enabled: false
+scp:
+  enabled: false
+amf:
+  enabled: false
+smf:
+  enabled: false
+upf:
+  enabled: false
+ausf:
+  enabled: false
+udm:
+  enabled: false
+udr:
+  enabled: false
+bsf:
+  enabled: false
+nssf:
+  enabled: false
+pcf:
+  enabled: false
