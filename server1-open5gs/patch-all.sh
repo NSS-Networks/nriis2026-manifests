@@ -29,6 +29,18 @@ kubectl create configmap -n open5gs open5gs-smf \
   --dry-run=client -o json | kubectl apply -f -
 kubectl rollout restart deployment -n open5gs open5gs-smf
 
+echo "=== Restarting remaining NFs to clear IP cache ==="
+kubectl rollout restart deployment -n open5gs open5gs-ausf
+kubectl rollout restart deployment -n open5gs open5gs-udm
+kubectl rollout restart deployment -n open5gs open5gs-udr
+kubectl rollout restart deployment -n open5gs open5gs-upf
+kubectl rollout restart deployment -n open5gs open5gs-pcf
+kubectl rollout restart deployment -n open5gs open5gs-bsf
+
+kubectl rollout status deployment -n open5gs open5gs-ausf --timeout=120s
+kubectl rollout status deployment -n open5gs open5gs-udm --timeout=120s
+kubectl rollout status deployment -n open5gs open5gs-udr --timeout=120s
+
 echo ""
 echo "=== Waiting for all deployments ==="
 kubectl rollout status deployment -n open5gs open5gs-amf --timeout=120s

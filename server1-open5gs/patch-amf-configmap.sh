@@ -11,6 +11,11 @@ kubectl create configmap -n open5gs open5gs-amf \
   --dry-run=client -o json | \
   kubectl apply -f -
 
+# Patch hostNetwork: true
+kubectl patch deployment -n open5gs open5gs-amf \
+  --type=json \
+  -p='[{"op":"add","path":"/spec/template/spec/hostNetwork","value":true}]'
+
 echo "[2/3] Restarting AMF deployment..."
 kubectl rollout restart deployment -n open5gs open5gs-amf
 

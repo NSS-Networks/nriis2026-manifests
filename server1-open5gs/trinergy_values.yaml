@@ -46,6 +46,7 @@ scp:
     kubernetes.io/hostname: open5gs-master
 amf:
   enabled: true
+  hostNetwork: true
   updateStrategy:
     type: Recreate
   nodeSelector:
@@ -80,7 +81,7 @@ amf:
         s_nssai:
           - sst: 1
           - sst: 1
-            sd: "000001"
+            sd: "000000"
     networkName: Gradiant
 smf:
   enabled: true
@@ -112,6 +113,11 @@ ausf:
   enabled: true
   nodeSelector:
     kubernetes.io/hostname: open5gs-master
+  image:
+    registry: ghcr.io
+    repository: nss-networks/open5gs
+    tag: xor-patch
+    pullPolicy: IfNotPresent
   config:
     sbi:
       client:
@@ -124,11 +130,11 @@ udm:
   enabled: true
   nodeSelector:
     kubernetes.io/hostname: open5gs-master
-  #image:
-    #registry: ghcr.io
-    #repository: nss-networks/open5gs
-    #tag: xor-patch
-    #pullPolicy: IfNotPresent
+  image:
+    registry: ghcr.io
+    repository: nss-networks/open5gs
+    tag: xor-patch
+    pullPolicy: IfNotPresent
   config:
     sbi:
       client:
@@ -141,11 +147,11 @@ udr:
   enabled: true
   nodeSelector:
     kubernetes.io/hostname: open5gs-master
-  #image:
-    #registry: ghcr.io
-    #repository: nss-networks/open5gs
-    #tag: xor-patch
-    #pullPolicy: IfNotPresent
+  image:
+    registry: ghcr.io
+    repository: nss-networks/open5gs
+    tag: xor-patch
+    pullPolicy: IfNotPresent
   config:
     sbi:
       client:
