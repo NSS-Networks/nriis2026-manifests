@@ -12,7 +12,7 @@ amf:
       port: 7777
     client:
       nrf:
-      - uri: http://open5gs-nrf-sbi:7777
+      - uri: http://10.107.143.168:7777
   ngap:
     server:
     - address: 10.162.0.1

@@ -2,14 +2,13 @@
 # patch-all.sh
 # ต้องรันทุกครั้งหลัง helm upgrade
 set -e
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+echo "=== [0/4] Patching AMF ==="
+bash ${SCRIPT_DIR}/patch-amf-configmap.sh
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-echo "=== [1/4] Patching AMF ConfigMap ==="
-kubectl create configmap -n open5gs open5gs-amf \
-  --from-file=amf.yaml=${SCRIPT_DIR}/amf-config.yaml \
-  --dry-run=client -o json | kubectl apply -f -
-kubectl rollout restart deployment -n open5gs open5gs-amf
 
 echo "=== [2/4] Patching NRF ConfigMap ==="
 kubectl create configmap -n open5gs open5gs-nrf \

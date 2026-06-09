@@ -113,11 +113,11 @@ ausf:
   enabled: true
   nodeSelector:
     kubernetes.io/hostname: open5gs-master
-  image:
-    registry: ghcr.io
-    repository: nss-networks/open5gs
-    tag: xor-patch
-    pullPolicy: IfNotPresent
+  #image:
+    #registry: ghcr.io
+    #repository: nss-networks/open5gs
+    #tag: xor-patch
+    #pullPolicy: IfNotPresent
   config:
     sbi:
       client:
@@ -130,11 +130,11 @@ udm:
   enabled: true
   nodeSelector:
     kubernetes.io/hostname: open5gs-master
-  image:
-    registry: ghcr.io
-    repository: nss-networks/open5gs
-    tag: xor-patch
-    pullPolicy: IfNotPresent
+  #image:
+    #registry: ghcr.io
+    #repository: nss-networks/open5gs
+    #tag: xor-patch
+    #pullPolicy: IfNotPresent
   config:
     sbi:
       client:
@@ -147,11 +147,11 @@ udr:
   enabled: true
   nodeSelector:
     kubernetes.io/hostname: open5gs-master
-  image:
-    registry: ghcr.io
-    repository: nss-networks/open5gs
-    tag: xor-patch
-    pullPolicy: IfNotPresent
+  #image:
+    #registry: ghcr.io
+    #repository: nss-networks/open5gs
+    #tag: xor-patch
+    #pullPolicy: IfNotPresent
   config:
     sbi:
       client:
