@@ -880,8 +880,9 @@ def get_infra_status() -> dict:
     # CoreDNS
     out = run_kubectl(['get', 'pods', '-n', 'kube-system',
                        '-l', 'k8s-app=kube-dns', '--no-headers'])
-    coredns_running = sum(1 for l in out.splitlines() if 'Running' in l)
-    coredns_total   = len([l for l in out.splitlines() if l.strip()])
+    lines = [l for l in out.splitlines() if l.strip()]
+    coredns_running = sum(1 for l in lines if 'Running' in l)
+    coredns_total   = len(lines) if lines else 1
 
     # NRF ClusterIP
     nrf_ip = run_kubectl(['get', 'svc', '-n', 'open5gs',

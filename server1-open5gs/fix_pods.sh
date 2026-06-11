@@ -39,10 +39,10 @@ echo "=== [5] AMF NRF ClusterIP ==="
 NRF_IP=$(kubectl get svc -n open5gs open5gs-nrf-sbi \
   -o jsonpath='{.spec.clusterIP}')
 AMF_NRF=$(grep "uri:" ~/nriis2026-manifests/server1-open5gs/amf-config.yaml \
-  | awk '{print $3}' | grep -oP '\d+\.\d+\.\d+\.\d+')
+  | grep -oP '(?<=http://)[\d.]+')
 if [ "$NRF_IP" != "$AMF_NRF" ]; then
   echo "❌ NRF IP ไม่ตรง ($AMF_NRF → $NRF_IP) — patch"
-  sed -i "s|$AMF_NRF|$NRF_IP|g" \
+  sed -i "s|http://${AMF_NRF}:7777|http://${NRF_IP}:7777|g" \
     ~/nriis2026-manifests/server1-open5gs/amf-config.yaml
   cd ~/nriis2026-manifests/server1-open5gs
   bash patch-all.sh
