@@ -1,0 +1,13 @@
+[Unit]
+Description=Create Flannel subnet.env on boot
+After=network.target
+Before=kubelet.service
+
+[Service]
+Type=oneshot
+ExecStart=/bin/mkdir -p /run/flannel
+ExecStart=/bin/bash -c 'printf "FLANNEL_NETWORK=10.244.0.0/16\nFLANNEL_SUBNET=10.244.0.1/24\nFLANNEL_MTU=1450\nFLANNEL_IPMASQ=true\n" > /run/flannel/subnet.env'
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

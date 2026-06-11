@@ -1,0 +1,16 @@
+[Unit]
+Description=Fix K8s pods on boot
+After=kubelet.service
+Wants=kubelet.service
+
+[Service]
+Type=oneshot
+User=nss
+ExecStartPre=/bin/sleep 60
+ExecStart=/home/nss/fix_pods.sh
+StandardOutput=journal
+StandardError=journal
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
