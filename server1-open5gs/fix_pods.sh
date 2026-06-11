@@ -17,7 +17,7 @@ fi
 
 echo "=== [3] CoreDNS ==="
 COREDNS=$(kubectl get pods -n kube-system -l k8s-app=kube-dns \
-  --field-selector=status.phase=Running --no-headers | wc -l)
+  --no-headers | grep Running | wc -l)
 if [ "$COREDNS" -eq 0 ]; then
   echo "❌ CoreDNS ไม่ Running — restart"
   kubectl rollout restart deployment -n kube-system coredns
